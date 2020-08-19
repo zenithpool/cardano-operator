@@ -1,0 +1,7 @@
+apiVersion: cardano.zenithpool.io/v1
+kind: Relay
+metadata:
+  name: relay-sample
+spec:
+  # Add fields here
+  foo: bar
