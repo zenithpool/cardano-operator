@@ -91,6 +91,25 @@ func (r *RelayReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 		return ctrl.Result{}, err
 	}
 
+	// Check if the service already exists, if not create a new one
+	foundSvc := &corev1.Service{}
+	err = r.Get(ctx, types.NamespacedName{Name: relay.Name, Namespace: relay.Namespace}, foundSvc)
+	if err != nil && errors.IsNotFound(err) {
+		// Define a new service
+		svc := r.serviceForRelay(relay)
+		log.Info("Creating a new Service", "Service.Namespace", svc.Namespace, "Service.Name", svc.Name)
+		err = r.Create(ctx, svc)
+		if err != nil {
+			log.Error(err, "Failed to create new Service", "Service.Namespace", svc.Namespace, "Service.Name", svc.Name)
+			return ctrl.Result{}, err
+		}
+		// Service created successfully - return and requeue
+		return ctrl.Result{Requeue: true}, nil
+	} else if err != nil {
+		log.Error(err, "Failed to get Service")
+		return ctrl.Result{}, err
+	}
+
 	// Ensure the statefulset size is the same as the spec
 	size := relay.Spec.Replicas
 	if *found.Spec.Replicas != size {
@@ -145,7 +164,41 @@ func (r *RelayReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 	return ctrl.Result{}, nil
 }
 
-// statefulsetForRelay returns a memcached StatefulSet object
+// serviceForRelay returns a Relay Service object
+func (r *RelayReconciler) serviceForRelay(relay *cardanov1.Relay) *corev1.Service {
+	ls := labelsForRelay(relay.Name)
+
+	svc := &corev1.Service{}
+
+	svc.ObjectMeta = metav1.ObjectMeta{
+		Name:        relay.Name,
+		Namespace:   relay.Namespace,
+		Annotations: relay.Spec.Service.Annotations,
+	}
+
+	svc.Spec.Selector = ls
+
+	if relay.Spec.Service.Type != corev1.ServiceTypeLoadBalancer && relay.Spec.Service.Type != corev1.ServiceTypeNodePort {
+		svc.Spec.ClusterIP = "None"
+	}
+
+	svc.Spec.Type = relay.Spec.Service.Type
+
+	svc.Spec.Ports = []corev1.ServicePort{
+		{
+			Name:       "cardano",
+			Port:       relay.Spec.Service.Port,
+			TargetPort: intstr.FromInt(31400),
+			Protocol:   corev1.ProtocolTCP,
+		},
+	}
+
+	// Set Relay instance as the owner and controller
+	ctrl.SetControllerReference(relay, svc, r.Scheme)
+	return svc
+}
+
+// statefulsetForRelay returns a Relay StatefulSet object
 func (r *RelayReconciler) statefulsetForRelay(relay *cardanov1.Relay) *appsv1.StatefulSet {
 	ls := labelsForRelay(relay.Name)
 
@@ -191,8 +244,7 @@ func (r *RelayReconciler) statefulsetForRelay(relay *cardanov1.Relay) *appsv1.St
 		},
 	}
 
-	// Set readiness probe
-	cardanoNode.ReadinessProbe = &corev1.Probe{
+	probe := &corev1.Probe{
 		Handler: corev1.Handler{
 			TCPSocket: &corev1.TCPSocketAction{
 				Port: intstr.FromInt(31400),
@@ -203,17 +255,11 @@ func (r *RelayReconciler) statefulsetForRelay(relay *cardanov1.Relay) *appsv1.St
 		FailureThreshold:    180,
 	}
 
+	// Set readiness probe
+	cardanoNode.ReadinessProbe = probe
+
 	// set livenessProbe
-	cardanoNode.LivenessProbe = &corev1.Probe{
-		Handler: corev1.Handler{
-			TCPSocket: &corev1.TCPSocketAction{
-				Port: intstr.FromInt(31400),
-			},
-		},
-		InitialDelaySeconds: 5,
-		PeriodSeconds:       10,
-		FailureThreshold:    180,
-	}
+	cardanoNode.LivenessProbe = probe
 
 	cardanoNode.Command = []string{"cardano-node"}
 	cardanoNode.Args = []string{

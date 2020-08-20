@@ -4,10 +4,10 @@ metadata:
   name: relay
 spec:
   # Add fields here
-  replicas: 2
+  replicas: 1
   imagePullSecrets:
     - name: ocirsecret
-  image: "fra.ocir.io/axj3k4dkrqku/cardano-node:1.18.0"
+  image: "fra.ocir.io/axj3k4dkrqku/cardano-node:1.19.0"
   storage:
     accessModes:
       - "ReadWriteOnce"
@@ -15,6 +15,9 @@ spec:
     resources:
       requests:
         storage: 5Gi
+  service:
+    type: ClusterIP
+    port: 31400
 ---
 apiVersion: v1
 kind: ConfigMap

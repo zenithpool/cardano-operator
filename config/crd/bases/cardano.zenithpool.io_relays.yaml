@@ -54,6 +54,21 @@ spec:
                 to remove/update
               format: int32
               type: integer
+            service:
+              description: RelayServiceSpec ...
+              properties:
+                annotations:
+                  additionalProperties:
+                    type: string
+                  type: object
+                port:
+                  format: int32
+                  type: integer
+                type:
+                  description: Service Type string describes ingress methods for a
+                    service
+                  type: string
+              type: object
             storage:
               description: PersistentVolumeClaimSpec describes the common attributes
                 of storage devices and allows a Source for provider-specific attributes
