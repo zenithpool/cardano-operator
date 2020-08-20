@@ -1,76 +1,20 @@
 apiVersion: cardano.zenithpool.io/v1
 kind: Relay
 metadata:
-  name: relay-sample
+  name: relay
 spec:
   # Add fields here
-  spec:
-    selector:
-      matchLabels:
-        app: "cardano-node"
-        relay_cr: "relay-sample"
-    serviceName: relay-sample
-    replicas: 1
-    template:
-      spec:
-        imagePullSecrets:
-          - name: ocirsecret
-        containers:
-          - name: "cardano-node"
-            image: "fra.ocir.io/axj3k4dkrqku/cardano-node:1.18.0"
-            ports:
-              - containerPort: 31400
-                protocol: TCP
-              - containerPort: 8080
-                protocol: TCP
-            readinessProbe:
-              tcpSocket:
-                port: 31400
-              initialDelaySeconds: 15
-              periodSeconds: 10
-              failureThreshold: 540
-            livenessProbe:
-              tcpSocket:
-                port: 31400
-              initialDelaySeconds: 15
-              periodSeconds: 10
-              failureThreshold: 540
-            command: ["cardano-node"]
-            args: ["run",
-              "--config", "/configuration/configuration.yaml", 
-              "--database-path", "/data/db", 
-              "--host-addr", "0.0.0.0", 
-              "--port", "31400", 
-              "--socket-path", "/ipc/node.socket", 
-              "--topology", "/configuration/topology.json"
-            ]
-            volumeMounts:
-              - name: node-db
-                mountPath: /data
-              - name: node-ipc
-                mountPath: /ipc
-              - name: cardano-config
-                mountPath: /configuration
-        volumes:
-          - name: node-ipc
-            emptyDir: {}
-          - name: cardano-config
-            projected:
-              sources:
-                - configMap:
-                    name:  'relay-config'
-                - configMap:
-                    name:   'relay-topology'
-    volumeClaimTemplates:
-    - metadata:
-        name: node-db
-      spec:
-        accessModes:
-          - "ReadWriteOnce"
-        storageClassName: ""
-        resources:
-          requests:
-            storage: 5Gi
+  replicas: 2
+  imagePullSecrets:
+    - name: ocirsecret
+  image: "fra.ocir.io/axj3k4dkrqku/cardano-node:1.18.0"
+  storage:
+    accessModes:
+      - "ReadWriteOnce"
+    storageClassName: "hostpath"
+    resources:
+      requests:
+        storage: 5Gi
 ---
 apiVersion: v1
 kind: ConfigMap

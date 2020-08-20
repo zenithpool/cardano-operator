@@ -18,12 +18,15 @@ package controllers
 
 import (
 	"context"
+	"fmt"
 	"reflect"
+	"strings"
 
 	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -89,9 +92,9 @@ func (r *RelayReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 	}
 
 	// Ensure the statefulset size is the same as the spec
-	size := relay.Spec.Spec.Replicas
-	if size != nil && *found.Spec.Replicas != *size {
-		found.Spec.Replicas = size
+	size := relay.Spec.Replicas
+	if *found.Spec.Replicas != size {
+		*found.Spec.Replicas = size
 		err = r.Update(ctx, found)
 		if err != nil {
 			log.Error(err, "Failed to update StatefulSet", "StatefulSet.Namespace", found.Namespace, "StatefulSet.Name", found.Name)
@@ -99,6 +102,21 @@ func (r *RelayReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 		}
 		// Spec updated - return and requeue
 		return ctrl.Result{Requeue: true}, nil
+	}
+
+	// Ensure the statefulset image is the same as the spec
+	image := relay.Spec.Image
+	for key, container := range found.Spec.Template.Spec.Containers {
+		if strings.EqualFold(container.Name, "cardano-node") && container.Image != image {
+			found.Spec.Template.Spec.Containers[key].Image = image
+			err = r.Update(ctx, found)
+			if err != nil {
+				log.Error(err, "Failed to update StatefulSet", "StatefulSet.Namespace", found.Namespace, "StatefulSet.Name", found.Name)
+				return ctrl.Result{}, err
+			}
+			// Spec updated - return and requeue
+			return ctrl.Result{Requeue: true}, nil
+		}
 	}
 
 	// Update the Relay status with the pod names
@@ -136,20 +154,135 @@ func (r *RelayReconciler) statefulsetForRelay(relay *cardanov1.Relay) *appsv1.St
 			Name:      relay.Name,
 			Namespace: relay.Namespace,
 		},
-		Spec: *relay.Spec.Spec,
 	}
 
-	if state.Spec.ServiceName == "" {
-		state.Spec.ServiceName = relay.Name
+	state.Spec.ServiceName = relay.Name
+
+	state.Spec.Selector = &metav1.LabelSelector{
+		MatchLabels: ls,
 	}
 
-	state.Spec.Selector.MatchLabels = ls
+	state.Spec.Replicas = &relay.Spec.Replicas
+
+	state.Spec.Template.Spec.ImagePullSecrets = relay.Spec.ImagePullSecrets
 
 	state.Spec.Template.ObjectMeta.Labels = ls
 	state.Spec.Template.ObjectMeta.Annotations = map[string]string{
 		"prometheus.io/scrape": "true",
 		"prometheus.io/path":   "/metrics",
 		"prometheus.io/port":   "8080",
+	}
+
+	// Create pod container details
+	cardanoNode := corev1.Container{}
+
+	cardanoNode.Name = "cardano-node"
+	cardanoNode.Image = relay.Spec.Image
+	cardanoNode.Ports = []corev1.ContainerPort{
+		{
+			ContainerPort: 31400,
+			Protocol:      corev1.ProtocolTCP,
+			Name:          "cardano",
+		},
+		{
+			ContainerPort: 8080,
+			Protocol:      corev1.ProtocolTCP,
+			Name:          "prometheus",
+		},
+	}
+
+	// Set readiness probe
+	cardanoNode.ReadinessProbe = &corev1.Probe{
+		Handler: corev1.Handler{
+			TCPSocket: &corev1.TCPSocketAction{
+				Port: intstr.FromInt(31400),
+			},
+		},
+		InitialDelaySeconds: 5,
+		PeriodSeconds:       10,
+		FailureThreshold:    180,
+	}
+
+	// set livenessProbe
+	cardanoNode.LivenessProbe = &corev1.Probe{
+		Handler: corev1.Handler{
+			TCPSocket: &corev1.TCPSocketAction{
+				Port: intstr.FromInt(31400),
+			},
+		},
+		InitialDelaySeconds: 5,
+		PeriodSeconds:       10,
+		FailureThreshold:    180,
+	}
+
+	cardanoNode.Command = []string{"cardano-node"}
+	cardanoNode.Args = []string{
+		"run",
+		"--config", "/configuration/configuration.yaml",
+		"--database-path", "/data/db",
+		"--host-addr", "0.0.0.0",
+		"--port", "31400",
+		"--socket-path", "/ipc/node.socket",
+		"--topology", "/configuration/topology.json",
+	}
+	cardanoNode.VolumeMounts = []corev1.VolumeMount{
+		{
+			Name:      "node-db",
+			MountPath: "/data",
+		},
+		{
+			Name:      "node-ipc",
+			MountPath: "/ipc",
+		},
+		{
+			Name:      "cardano-config",
+			MountPath: "/configuration",
+		},
+	}
+
+	state.Spec.Template.Spec.Containers = append(state.Spec.Template.Spec.Containers, cardanoNode)
+
+	// add container volumes like node-ipc and cardano-config
+	state.Spec.Template.Spec.Volumes = []corev1.Volume{
+		{
+			Name: "node-ipc",
+			VolumeSource: corev1.VolumeSource{
+				EmptyDir: nil,
+			},
+		},
+		{
+			Name: "cardano-config",
+			VolumeSource: corev1.VolumeSource{
+				Projected: &corev1.ProjectedVolumeSource{
+					Sources: []corev1.VolumeProjection{
+						{
+							ConfigMap: &corev1.ConfigMapProjection{
+								LocalObjectReference: corev1.LocalObjectReference{
+									Name: fmt.Sprintf("%s-config", relay.Name),
+								},
+							},
+						},
+						{
+							ConfigMap: &corev1.ConfigMapProjection{
+								LocalObjectReference: corev1.LocalObjectReference{
+									Name: fmt.Sprintf("%s-topology", relay.Name),
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	// add volumeClaimTemplate
+	state.Spec.VolumeClaimTemplates = []corev1.PersistentVolumeClaim{
+		{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "node-db",
+			},
+			Spec: relay.Spec.Storage,
+		},
 	}
 
 	// Set Relay instance as the owner and controller
