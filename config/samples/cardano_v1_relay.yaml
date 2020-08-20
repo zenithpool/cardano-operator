@@ -4,4 +4,208 @@ metadata:
   name: relay-sample
 spec:
   # Add fields here
-  foo: bar
+  spec:
+    selector:
+      matchLabels:
+        app: "cardano-node"
+        relay_cr: "relay-sample"
+    serviceName: relay-sample
+    replicas: 1
+    template:
+      spec:
+        imagePullSecrets:
+          - name: ocirsecret
+        containers:
+          - name: "cardano-node"
+            image: "fra.ocir.io/axj3k4dkrqku/cardano-node:1.18.0"
+            ports:
+              - containerPort: 31400
+                protocol: TCP
+              - containerPort: 8080
+                protocol: TCP
+            readinessProbe:
+              tcpSocket:
+                port: 31400
+              initialDelaySeconds: 15
+              periodSeconds: 10
+              failureThreshold: 540
+            livenessProbe:
+              tcpSocket:
+                port: 31400
+              initialDelaySeconds: 15
+              periodSeconds: 10
+              failureThreshold: 540
+            command: ["cardano-node"]
+            args: ["run",
+              "--config", "/configuration/configuration.yaml", 
+              "--database-path", "/data/db", 
+              "--host-addr", "0.0.0.0", 
+              "--port", "31400", 
+              "--socket-path", "/ipc/node.socket", 
+              "--topology", "/configuration/topology.json"
+            ]
+            volumeMounts:
+              - name: node-db
+                mountPath: /data
+              - name: node-ipc
+                mountPath: /ipc
+              - name: cardano-config
+                mountPath: /configuration
+        volumes:
+          - name: node-ipc
+            emptyDir: {}
+          - name: cardano-config
+            projected:
+              sources:
+                - configMap:
+                    name:  'relay-config'
+                - configMap:
+                    name:   'relay-topology'
+    volumeClaimTemplates:
+    - metadata:
+        name: node-db
+      spec:
+        accessModes:
+          - "ReadWriteOnce"
+        storageClassName: ""
+        resources:
+          requests:
+            storage: 5Gi
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name:  'relay-config'
+data:
+  configuration.yaml: |
+    ApplicationName: cardano-sl
+    ApplicationVersion: 1
+    ByronGenesisFile: /genesis/byron-genesis.json
+    ByronGenesisHash: 5f20df933584822601f9e3f8c024eb5eb252fe8cefb24d1317dc3d432e940ebb
+    LastKnownBlockVersion-Alt: 0
+    LastKnownBlockVersion-Major: 2
+    LastKnownBlockVersion-Minor: 0
+    MaxKnownMajorProtocolVersion: 2
+    Protocol: Cardano
+    RequiresNetworkMagic: RequiresNoMagic
+    ShelleyGenesisFile: /genesis/shelley-genesis.json
+    ShelleyGenesisHash: 1a3be38bcbb7911969283716ad7aa550250226b76a61fc51cc9a9a35d9276d81
+    TraceBlockFetchClient: false
+    TraceBlockFetchDecisions: true
+    TraceBlockFetchProtocol: false
+    TraceBlockFetchProtocolSerialised: false
+    TraceBlockFetchServer: false
+    TraceChainDb: true
+    TraceChainSyncBlockServer: false
+    TraceChainSyncClient: false
+    TraceChainSyncHeaderServer: false
+    TraceChainSyncProtocol: false
+    TraceDNSResolver: true
+    TraceDNSSubscription: true
+    TraceErrorPolicy: true
+    TraceForge: true
+    TraceHandshake: false
+    TraceIpSubscription: true
+    TraceLocalChainSyncProtocol: false
+    TraceLocalErrorPolicy: true
+    TraceLocalHandshake: false
+    TraceLocalTxSubmissionProtocol: false
+    TraceLocalTxSubmissionServer: false
+    TraceMempool: true
+    TraceMux: false
+    TraceTxInbound: false
+    TraceTxOutbound: false
+    TraceTxSubmissionProtocol: false
+    TracingVerbosity: NormalVerbosity
+    TurnOnLogMetrics: true
+    TurnOnLogging: true
+    ViewMode: SimpleView
+    defaultBackends:
+    - KatipBK
+    defaultScribes:
+    - - StdoutSK
+      - stdout
+    hasEKG: 12788
+    hasPrometheus:
+    - 0.0.0.0
+    - 8080
+    minSeverity: Debug
+    options:
+      mapBackends:
+        cardano.node-metrics:
+        - EKGViewBK
+        - kind: UserDefinedBK
+          name: LiveViewBackend
+        cardano.node.BlockFetchDecision.peers:
+        - EKGViewBK
+        - kind: UserDefinedBK
+          name: LiveViewBackend
+        cardano.node.ChainDB.metrics:
+        - EKGViewBK
+        - kind: UserDefinedBK
+          name: LiveViewBackend
+        cardano.node.Forge.metrics:
+        - EKGViewBK
+        cardano.node.metrics:
+        - EKGViewBK
+        - kind: UserDefinedBK
+          name: LiveViewBackend
+      mapSubtrace:
+        "#ekgview":
+          contents:
+          - - contents: cardano.epoch-validation.benchmark
+              tag: Contains
+            - - contents: ".monoclock.basic."
+                tag: Contains
+          - - contents: cardano.epoch-validation.benchmark
+              tag: Contains
+            - - contents: diff.RTS.cpuNs.timed.
+                tag: Contains
+          - - contents: "#ekgview.#aggregation.cardano.epoch-validation.benchmark"
+              tag: StartsWith
+            - - contents: diff.RTS.gcNum.timed.
+                tag: Contains
+          subtrace: FilterTrace
+        benchmark:
+          contents:
+          - GhcRtsStats
+          - MonotonicClock
+          subtrace: ObservableTrace
+        cardano.epoch-validation.utxo-stats:
+          subtrace: NoTrace
+        cardano.node-metrics:
+          subtrace: Neutral
+        cardano.node.metrics:
+          subtrace: Neutral
+    rotation:
+      rpKeepFilesNum: 10
+      rpLogLimitBytes: 5000000
+      rpMaxAgeHours: 24
+    setupBackends:
+    - KatipBK
+    setupScribes:
+    - scFormat: ScText
+      scKind: StdoutSK
+      scName: stdout
+      scRotation:
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name:  'relay-topology'
+data:
+  topology.json: |
+    {
+      "Producers": [
+        {
+          "friendly_name": "IOHK Relays",
+          "addr": "relays-new.cardano-mainnet.iohk.io",
+          "port": 3001,
+          "valency": 2
+        }
+      ]
+    }
+
+
+

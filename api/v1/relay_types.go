@@ -17,6 +17,7 @@ limitations under the License.
 package v1
 
 import (
+	appsv1 "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -28,14 +29,15 @@ type RelaySpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	// Foo is an example field of Relay. Edit Relay_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
+	// Size is an example field of Relay. Edit Relay_types.go to remove/update
+	Spec *appsv1.StatefulSetSpec `json:"spec,omitempty"`
 }
 
 // RelayStatus defines the observed state of Relay
 type RelayStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
+	Nodes []string `json:"nodes"`
 }
 
 // +kubebuilder:object:root=true

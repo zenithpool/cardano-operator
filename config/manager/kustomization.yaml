@@ -5,4 +5,4 @@ kind: Kustomization
 images:
 - name: controller
   newName: zenithpool/cardano-operator
-  newTag: latest
+  newTag: v0.0.5
