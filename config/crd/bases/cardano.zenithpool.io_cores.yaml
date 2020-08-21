@@ -50,8 +50,6 @@ spec:
                 type: object
               type: array
             replicas:
-              description: Foo is an example field of Core. Edit Core_types.go to
-                remove/update
               format: int32
               type: integer
             service:

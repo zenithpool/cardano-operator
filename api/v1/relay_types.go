@@ -17,7 +17,6 @@ limitations under the License.
 package v1
 
 import (
-	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -30,18 +29,7 @@ type RelaySpec struct {
 	// Important: Run "make" to regenerate code after modifying this file
 
 	// Size is an example field of Relay. Edit Relay_types.go to remove/update
-	Replicas         int32                        `json:"replicas"`
-	ImagePullSecrets []v1.LocalObjectReference    `json:"imagePullSecrets,omitempty"`
-	Image            string                       `json:"image,omitempty"`
-	Storage          v1.PersistentVolumeClaimSpec `json:"storage"`
-	Service          NodeServiceSpec              `json:"service,omitempty"`
-}
-
-// NodeServiceSpec ...
-type NodeServiceSpec struct {
-	Annotations map[string]string `json:"annotations,omitempty"`
-	Type        v1.ServiceType    `json:"type,omitempty"`
-	Port        int32             `json:"port,omitempty"`
+	NodeSpec `json:",inline"`
 }
 
 // RelayStatus defines the observed state of Relay

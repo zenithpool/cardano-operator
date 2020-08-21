@@ -17,7 +17,6 @@ limitations under the License.
 package v1
 
 import (
-	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -30,11 +29,7 @@ type CoreSpec struct {
 	// Important: Run "make" to regenerate code after modifying this file
 
 	// Foo is an example field of Core. Edit Core_types.go to remove/update
-	Replicas         int32                        `json:"replicas"`
-	ImagePullSecrets []v1.LocalObjectReference    `json:"imagePullSecrets,omitempty"`
-	Image            string                       `json:"image,omitempty"`
-	Storage          v1.PersistentVolumeClaimSpec `json:"storage"`
-	Service          NodeServiceSpec              `json:"service,omitempty"`
+	NodeSpec `json:",inline"`
 }
 
 // CoreStatus defines the observed state of Core
