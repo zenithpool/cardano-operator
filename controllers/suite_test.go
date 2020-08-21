@@ -33,8 +33,9 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	cardanov1 "github.com/zenithpool/cardano-operator/api/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
+
+	cardanov1 "github.com/zenithpool/cardano-operator/api/v1"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -72,6 +73,9 @@ var _ = BeforeSuite(func(done Done) {
 	cfg, err := testEnv.Start()
 	Expect(err).ToNot(HaveOccurred())
 	Expect(cfg).ToNot(BeNil())
+
+	err = cardanov1.AddToScheme(scheme.Scheme)
+	Expect(err).NotTo(HaveOccurred())
 
 	err = cardanov1.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())

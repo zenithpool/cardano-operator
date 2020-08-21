@@ -113,7 +113,14 @@ func (r *RelayReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 		return result, err
 	}
 
-	result, err = updateStatus(relay.Name, relay.Namespace, relay.Status.Nodes, r.Client, relay)
+	result, err = updateStatus(relay.Name, relay.Namespace, labelsForRelay(relay.Name), relay.Status.Nodes, r.Client, func(pods []string) (ctrl.Result, error) {
+		relay.Status.Nodes = pods
+		err := r.Status().Update(ctx, relay)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{}, nil
+	})
 	if err != nil || result.Requeue {
 		if err != nil {
 			log.Error(err, "Failed to update status", "Relay.Namespace", found.Namespace, "Relay.Name", found.Name)

@@ -110,7 +110,14 @@ func (r *CoreReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 		return result, err
 	}
 
-	result, err = updateStatus(core.Name, core.Namespace, core.Status.Nodes, r.Client, core)
+	result, err = updateStatus(core.Name, core.Namespace, labelsForCore(core.Name), core.Status.Nodes, r.Client, func(pods []string) (ctrl.Result, error) {
+		core.Status.Nodes = pods
+		err := r.Status().Update(ctx, core)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{}, nil
+	})
 	if err != nil || result.Requeue {
 		if err != nil {
 			log.Error(err, "Failed to update status", "Core.Namespace", found.Namespace, "Core.Name", found.Name)

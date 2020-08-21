@@ -83,6 +83,14 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "Core")
 		os.Exit(1)
 	}
+
+	failOverReconciler := &controllers.FailOverReconciler{
+		Client: mgr.GetClient(),
+		Log:    ctrl.Log.WithName("controllers").WithName("FailOver"),
+		Scheme: mgr.GetScheme(),
+	}
+
+	go failOverReconciler.Reconcile()
 	// +kubebuilder:scaffold:builder
 
 	setupLog.Info("starting manager")

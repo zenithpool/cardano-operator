@@ -19,30 +19,46 @@ import (
 
 var _ = Describe("Relay Controllers", func() {
 	var (
-		key types.NamespacedName
+		keys []types.NamespacedName
 	)
 
 	const timeout = time.Second * 5
 	const interval = time.Second * 1
 
+	BeforeEach(func() {
+		keys = []types.NamespacedName{
+			{
+				Name:      "ginkgo-default-relay",
+				Namespace: "default",
+			},
+			{
+				Name:      "ginkgo-healdess-relay",
+				Namespace: "default",
+			},
+		}
+
+		for _, key := range keys {
+			f := &cardanov1.Relay{}
+			_ = k8sClient.Get(context.Background(), key, f)
+			k8sClient.Delete(context.Background(), f)
+		}
+
+	})
+
 	AfterEach(func() {
 		// Add any teardown steps that needs to be executed after each test
-		f := &cardanov1.Relay{}
-		_ = k8sClient.Get(context.Background(), key, f)
-		k8sClient.Delete(context.Background(), f)
+		for _, key := range keys {
+			f := &cardanov1.Relay{}
+			_ = k8sClient.Get(context.Background(), key, f)
+			k8sClient.Delete(context.Background(), f)
+		}
 	})
 
 	Context("Default Relay", func() {
 
-		BeforeEach(func() {
-			// Add any setup steps that needs to be executed before each test
-			key = types.NamespacedName{
-				Name:      "ginkgo-default-relay",
-				Namespace: "default",
-			}
-		})
-
 		It("should create relay node", func() {
+
+			key := keys[0]
 
 			hostPath := "hostpath"
 
@@ -79,37 +95,27 @@ var _ = Describe("Relay Controllers", func() {
 				f := &cardanov1.Relay{}
 				_ = k8sClient.Get(context.Background(), key, f)
 				return f
-			}).ShouldNot(BeNil())
+			}, timeout, interval).ShouldNot(BeNil())
 
 			Eventually(func() string {
 				f := &appsv1.StatefulSet{}
 				_ = k8sClient.Get(context.Background(), key, f)
 				return f.Spec.ServiceName
-			}).Should(Equal(key.Name))
+			}, timeout, interval).Should(Equal(key.Name))
 
 			Eventually(func() int32 {
 				f := &appsv1.StatefulSet{}
 				_ = k8sClient.Get(context.Background(), key, f)
 				return *f.Spec.Replicas
-			}).Should(Equal(int32(1)))
+			}, timeout, interval).Should(Equal(int32(1)))
 
 			Eventually(func() string {
 				f := &corev1.Service{}
 				_ = k8sClient.Get(context.Background(), key, f)
 				return f.Spec.ClusterIP
-			}).ShouldNot(Equal("None"))
+			}, timeout, interval).ShouldNot(Equal("None"))
 
-			By("Update relay to 2 replicas")
-			new.Spec.Replicas = 2
-			Expect(k8sClient.Update(context.Background(), new)).Should(Succeed())
-
-			Eventually(func() int32 {
-				f := &appsv1.StatefulSet{}
-				_ = k8sClient.Get(context.Background(), key, f)
-				return *f.Spec.Replicas
-			}).Should(Equal(int32(2)))
-
-			By("Update core to image")
+			By("Update relay to image")
 			new.Spec.Image = "fra.ocir.io/axj3k4dkrqku/cardano-node:1.18.0"
 			Expect(k8sClient.Update(context.Background(), new)).Should(Succeed())
 
@@ -120,37 +126,41 @@ var _ = Describe("Relay Controllers", func() {
 					return f.Spec.Template.Spec.Containers[0].Image
 				}
 				return ""
-			}).Should(Equal("fra.ocir.io/axj3k4dkrqku/cardano-node:1.18.0"))
+			}, timeout, interval).Should(Equal("fra.ocir.io/axj3k4dkrqku/cardano-node:1.18.0"))
+
+			By("Update relay to 2 replicas")
+			new.Spec.Replicas = 2
+			Expect(k8sClient.Update(context.Background(), new)).Should(Succeed())
+
+			Eventually(func() int32 {
+				f := &appsv1.StatefulSet{}
+				_ = k8sClient.Get(context.Background(), key, f)
+				return *f.Spec.Replicas
+			}, timeout, interval).Should(Equal(int32(2)))
 
 			By("Expecting to delete successfully")
 			Eventually(func() error {
 				f := &cardanov1.Relay{}
 				_ = k8sClient.Get(context.Background(), key, f)
 				return k8sClient.Delete(context.Background(), f)
-			}).Should(Succeed())
+			}, timeout, interval).Should(Succeed())
 
 			By("Expecting to delete finish")
 			Eventually(func() error {
 				f := &cardanov1.Relay{}
 				return k8sClient.Get(context.Background(), key, f)
-			}).ShouldNot(Succeed())
+			}, timeout, interval).ShouldNot(Succeed())
 
 		})
 	})
 
 	Context("Headless Relay", func() {
 
-		BeforeEach(func() {
-			// Add any setup steps that needs to be executed before each test
-			key = types.NamespacedName{
-				Name:      "ginkgo-healdess-relay",
-				Namespace: "default",
-			}
-		})
-
 		It("should create relay node", func() {
 
 			hostPath := "hostpath"
+
+			key := keys[1]
 
 			new := &cardanov1.Relay{
 				ObjectMeta: metav1.ObjectMeta{

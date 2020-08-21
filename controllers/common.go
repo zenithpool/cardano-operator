@@ -10,11 +10,16 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"k8s.io/apimachinery/pkg/util/intstr"
+)
+
+const (
+	serviceModeAnnotation = "cardano.io/mode"
+	podDesignationLabel   = "cardano.io/designation"
 )
 
 func generateNodeStatefulset(name string,
@@ -268,7 +273,7 @@ func ensureSpec(replicas int32, found *appsv1.StatefulSet, image string, r clien
 	return ctrl.Result{}, nil
 }
 
-func updateStatus(name string, namespace string, nodes []string, r client.Client, obj runtime.Object) (ctrl.Result, error) {
+func updateStatus(name string, namespace string, labels map[string]string, nodes []string, r client.Client, fn func([]string) (ctrl.Result, error)) (ctrl.Result, error) {
 
 	ctx := context.Background()
 
@@ -277,7 +282,7 @@ func updateStatus(name string, namespace string, nodes []string, r client.Client
 	podList := &corev1.PodList{}
 	listOpts := []client.ListOption{
 		client.InNamespace(namespace),
-		client.MatchingLabels(labelsForRelay(name)),
+		client.MatchingLabels(labels),
 	}
 	if err := r.List(ctx, podList, listOpts...); err != nil {
 		return ctrl.Result{}, err
@@ -286,10 +291,81 @@ func updateStatus(name string, namespace string, nodes []string, r client.Client
 
 	// Update status.Nodes if needed
 	if !reflect.DeepEqual(podNames, nodes) {
-		nodes = podNames
-		err := r.Status().Update(ctx, obj)
+
+		return fn(podNames)
+	}
+
+	return ctrl.Result{}, nil
+}
+
+func ensureActiveStandby(name string, namespace string, labels map[string]string, r client.Client) (ctrl.Result, error) {
+	ctx := context.Background()
+
+	// get all svc's selectors
+	svc := &corev1.Service{}
+	err := r.Get(ctx, types.NamespacedName{Name: name, Namespace: namespace}, svc)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("Failed to get service: %s", err.Error())
+	}
+
+	// get eligible pods
+	podList := &corev1.PodList{}
+	listOpts := []client.ListOption{
+		client.InNamespace(namespace),
+		client.MatchingLabels(labels),
+	}
+	if err := r.List(ctx, podList, listOpts...); err != nil {
+		return ctrl.Result{Requeue: true}, err
+	}
+	// filter by runnning pods
+	eligiblePods := []corev1.Pod{}
+	for _, pod := range podList.Items {
+		if pod.Status.Phase == corev1.PodRunning {
+			ready := true
+			for _, container := range pod.Status.ContainerStatuses {
+				if !container.Ready {
+					ready = false
+					break
+				}
+			}
+
+			// if pod's containers are not ready, pod is not ready
+			if !ready {
+				continue
+			}
+
+			// TODO check if cardano container is sync
+
+			// pod is ready and all containers are ready, add to eligibleList
+			eligiblePods = append(eligiblePods, pod)
+		}
+	}
+
+	// if there is not an active pod, promote one
+	foundPodDesignated := false
+	for _, pod := range eligiblePods {
+		if _, found := pod.Labels[podDesignationLabel]; found {
+			foundPodDesignated = true
+			break
+		}
+	}
+	if !foundPodDesignated && len(eligiblePods) > 0 {
+		pod := eligiblePods[0]
+		patch := client.MergeFrom(pod.DeepCopy())
+		pod.Labels[podDesignationLabel] = "true"
+		err = r.Patch(ctx, &pod, patch)
 		if err != nil {
-			return ctrl.Result{}, err
+			return ctrl.Result{Requeue: true}, fmt.Errorf("Unable to patch pod with designation label: %s", err.Error())
+		}
+	}
+
+	// pod designation label to selector to svc
+	if _, found := svc.Spec.Selector[podDesignationLabel]; !found {
+		patch := client.MergeFrom(svc.DeepCopy())
+		svc.Spec.Selector[podDesignationLabel] = "true"
+		err = r.Patch(ctx, svc, patch)
+		if err != nil {
+			return ctrl.Result{Requeue: true}, fmt.Errorf("Unable to patch svc with designation label: %s", err.Error())
 		}
 	}
 

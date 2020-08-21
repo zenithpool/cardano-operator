@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"context"
+	"time"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -18,6 +19,9 @@ var _ = Describe("Core Controllers", func() {
 	var (
 		key types.NamespacedName
 	)
+
+	const timeout = time.Second * 5
+	const interval = time.Second * 1
 
 	BeforeEach(func() {
 		// Add any setup steps that needs to be executed before each test
@@ -78,13 +82,13 @@ var _ = Describe("Core Controllers", func() {
 				f := &appsv1.StatefulSet{}
 				_ = k8sClient.Get(context.Background(), key, f)
 				return f.Spec.ServiceName
-			}).Should(Equal(key.Name))
+			}, timeout, interval).Should(Equal(key.Name))
 
 			Eventually(func() int32 {
 				f := &appsv1.StatefulSet{}
 				_ = k8sClient.Get(context.Background(), key, f)
 				return *f.Spec.Replicas
-			}).Should(Equal(int32(1)))
+			}, timeout, interval).Should(Equal(int32(1)))
 
 			By("Update core to 2 replicas")
 			new.Spec.Replicas = 2
@@ -94,7 +98,7 @@ var _ = Describe("Core Controllers", func() {
 				f := &appsv1.StatefulSet{}
 				_ = k8sClient.Get(context.Background(), key, f)
 				return *f.Spec.Replicas
-			}).Should(Equal(int32(2)))
+			}, timeout, interval).Should(Equal(int32(2)))
 
 			By("Update core to image")
 			new.Spec.Image = "fra.ocir.io/axj3k4dkrqku/cardano-node:1.18.0"
@@ -107,20 +111,20 @@ var _ = Describe("Core Controllers", func() {
 					return f.Spec.Template.Spec.Containers[0].Image
 				}
 				return ""
-			}).Should(Equal("fra.ocir.io/axj3k4dkrqku/cardano-node:1.18.0"))
+			}, timeout, interval).Should(Equal("fra.ocir.io/axj3k4dkrqku/cardano-node:1.18.0"))
 
 			By("Expecting to delete successfully")
 			Eventually(func() error {
 				f := &cardanov1.Core{}
 				_ = k8sClient.Get(context.Background(), key, f)
 				return k8sClient.Delete(context.Background(), f)
-			}).Should(Succeed())
+			}, timeout, interval).Should(Succeed())
 
 			By("Expecting to delete finish")
 			Eventually(func() error {
 				f := &cardanov1.Core{}
 				return k8sClient.Get(context.Background(), key, f)
-			}).ShouldNot(Succeed())
+			}, timeout, interval).ShouldNot(Succeed())
 
 		})
 	})
