@@ -128,7 +128,7 @@ func (r *RelayReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 func (r *RelayReconciler) serviceForRelay(relay *cardanov1.Relay) *corev1.Service {
 	ls := labelsForRelay(relay.Name)
 
-	svc := generateNodeService(relay.Name, relay.Namespace, relay.Annotations, ls, relay.Spec.Service)
+	svc := generateNodeService(relay.Name, relay.Namespace, ls, relay.Spec.Service)
 
 	// Set Relay instance as the owner and controller
 	ctrl.SetControllerReference(relay, svc, r.Scheme)

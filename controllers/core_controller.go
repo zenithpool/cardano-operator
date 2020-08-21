@@ -125,7 +125,7 @@ func (r *CoreReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 func (r *CoreReconciler) serviceForCore(core *cardanov1.Core) *corev1.Service {
 	ls := labelsForCore(core.Name)
 
-	svc := generateNodeService(core.Name, core.Namespace, core.Annotations, ls, core.Spec.Service)
+	svc := generateNodeService(core.Name, core.Namespace, ls, core.Spec.Service)
 
 	// Set Core instance as the owner and controller
 	ctrl.SetControllerReference(core, svc, r.Scheme)

@@ -205,7 +205,6 @@ func generateNodeStatefulset(name string,
 
 func generateNodeService(name string,
 	namespace string,
-	annotations map[string]string,
 	labels map[string]string,
 	service cardanov1.NodeServiceSpec) *corev1.Service {
 
@@ -214,7 +213,7 @@ func generateNodeService(name string,
 	svc.ObjectMeta = metav1.ObjectMeta{
 		Name:        name,
 		Namespace:   namespace,
-		Annotations: annotations,
+		Annotations: service.Annotations,
 	}
 
 	svc.Spec.Selector = labels
