@@ -21,6 +21,26 @@ rules:
 - apiGroups:
   - cardano.zenithpool.io
   resources:
+  - cores
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - cardano.zenithpool.io
+  resources:
+  - cores/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - cardano.zenithpool.io
+  resources:
   - relays
   verbs:
   - create

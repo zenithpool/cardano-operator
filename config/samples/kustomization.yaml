@@ -1,4 +1,5 @@
 ## Append samples you want in your CSV to this file as resources ##
 resources:
 - cardano_v1_relay.yaml
+- cardano_v1_core.yaml
 # +kubebuilder:scaffold:manifestskustomizesamples

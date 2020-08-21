@@ -1,0 +1,24 @@
+# permissions for end users to edit cores.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: core-editor-role
+rules:
+- apiGroups:
+  - cardano.zenithpool.io
+  resources:
+  - cores
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - cardano.zenithpool.io
+  resources:
+  - cores/status
+  verbs:
+  - get

@@ -34,11 +34,11 @@ type RelaySpec struct {
 	ImagePullSecrets []v1.LocalObjectReference    `json:"imagePullSecrets,omitempty"`
 	Image            string                       `json:"image,omitempty"`
 	Storage          v1.PersistentVolumeClaimSpec `json:"storage"`
-	Service          RelayServiceSpec             `json:"service,omitempty"`
+	Service          NodeServiceSpec              `json:"service,omitempty"`
 }
 
-// RelayServiceSpec ...
-type RelayServiceSpec struct {
+// NodeServiceSpec ...
+type NodeServiceSpec struct {
 	Annotations map[string]string `json:"annotations,omitempty"`
 	Type        v1.ServiceType    `json:"type,omitempty"`
 	Port        int32             `json:"port,omitempty"`

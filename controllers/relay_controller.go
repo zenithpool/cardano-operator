@@ -18,21 +18,16 @@ package controllers
 
 import (
 	"context"
-	"fmt"
-	"reflect"
-	"strings"
 
 	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/intstr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	cardanov1 "github.com/zenithpool/cardano-operator/api/v1"
 )
@@ -110,55 +105,20 @@ func (r *RelayReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 		return ctrl.Result{}, err
 	}
 
-	// Ensure the statefulset size is the same as the spec
-	size := relay.Spec.Replicas
-	if *found.Spec.Replicas != size {
-		*found.Spec.Replicas = size
-		err = r.Update(ctx, found)
+	result, err := ensureSpec(relay.Spec.Replicas, found, relay.Spec.Image, r)
+	if err != nil || result.Requeue {
 		if err != nil {
 			log.Error(err, "Failed to update StatefulSet", "StatefulSet.Namespace", found.Namespace, "StatefulSet.Name", found.Name)
-			return ctrl.Result{}, err
 		}
-		// Spec updated - return and requeue
-		return ctrl.Result{Requeue: true}, nil
+		return result, err
 	}
 
-	// Ensure the statefulset image is the same as the spec
-	image := relay.Spec.Image
-	for key, container := range found.Spec.Template.Spec.Containers {
-		if strings.EqualFold(container.Name, "cardano-node") && container.Image != image {
-			found.Spec.Template.Spec.Containers[key].Image = image
-			err = r.Update(ctx, found)
-			if err != nil {
-				log.Error(err, "Failed to update StatefulSet", "StatefulSet.Namespace", found.Namespace, "StatefulSet.Name", found.Name)
-				return ctrl.Result{}, err
-			}
-			// Spec updated - return and requeue
-			return ctrl.Result{Requeue: true}, nil
-		}
-	}
-
-	// Update the Relay status with the pod names
-	// List the pods for this relay's statefulset
-	podList := &corev1.PodList{}
-	listOpts := []client.ListOption{
-		client.InNamespace(relay.Namespace),
-		client.MatchingLabels(labelsForRelay(relay.Name)),
-	}
-	if err = r.List(ctx, podList, listOpts...); err != nil {
-		log.Error(err, "Failed to list pods", "Relay.Namespace", relay.Namespace, "Relay.Name", relay.Name)
-		return ctrl.Result{}, err
-	}
-	podNames := getPodNames(podList.Items)
-
-	// Update status.Nodes if needed
-	if !reflect.DeepEqual(podNames, relay.Status.Nodes) {
-		relay.Status.Nodes = podNames
-		err := r.Status().Update(ctx, relay)
+	result, err = updateStatus(relay.Name, relay.Namespace, relay.Status.Nodes, r.Client, relay)
+	if err != nil || result.Requeue {
 		if err != nil {
-			log.Error(err, "Failed to update Relay status")
-			return ctrl.Result{}, err
+			log.Error(err, "Failed to update status", "Relay.Namespace", found.Namespace, "Relay.Name", found.Name)
 		}
+		return result, err
 	}
 
 	return ctrl.Result{}, nil
@@ -168,30 +128,7 @@ func (r *RelayReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 func (r *RelayReconciler) serviceForRelay(relay *cardanov1.Relay) *corev1.Service {
 	ls := labelsForRelay(relay.Name)
 
-	svc := &corev1.Service{}
-
-	svc.ObjectMeta = metav1.ObjectMeta{
-		Name:        relay.Name,
-		Namespace:   relay.Namespace,
-		Annotations: relay.Spec.Service.Annotations,
-	}
-
-	svc.Spec.Selector = ls
-
-	if relay.Spec.Service.Type != corev1.ServiceTypeLoadBalancer && relay.Spec.Service.Type != corev1.ServiceTypeNodePort {
-		svc.Spec.ClusterIP = "None"
-	}
-
-	svc.Spec.Type = relay.Spec.Service.Type
-
-	svc.Spec.Ports = []corev1.ServicePort{
-		{
-			Name:       "cardano",
-			Port:       relay.Spec.Service.Port,
-			TargetPort: intstr.FromInt(31400),
-			Protocol:   corev1.ProtocolTCP,
-		},
-	}
+	svc := generateNodeService(relay.Name, relay.Namespace, relay.Annotations, ls, relay.Spec.Service)
 
 	// Set Relay instance as the owner and controller
 	ctrl.SetControllerReference(relay, svc, r.Scheme)
@@ -202,134 +139,15 @@ func (r *RelayReconciler) serviceForRelay(relay *cardanov1.Relay) *corev1.Servic
 func (r *RelayReconciler) statefulsetForRelay(relay *cardanov1.Relay) *appsv1.StatefulSet {
 	ls := labelsForRelay(relay.Name)
 
-	state := &appsv1.StatefulSet{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      relay.Name,
-			Namespace: relay.Namespace,
-		},
-	}
-
-	state.Spec.ServiceName = relay.Name
-
-	state.Spec.Selector = &metav1.LabelSelector{
-		MatchLabels: ls,
-	}
-
-	state.Spec.Replicas = &relay.Spec.Replicas
-
-	state.Spec.Template.Spec.ImagePullSecrets = relay.Spec.ImagePullSecrets
-
-	state.Spec.Template.ObjectMeta.Labels = ls
-	state.Spec.Template.ObjectMeta.Annotations = map[string]string{
-		"prometheus.io/scrape": "true",
-		"prometheus.io/path":   "/metrics",
-		"prometheus.io/port":   "8080",
-	}
-
-	// Create pod container details
-	cardanoNode := corev1.Container{}
-
-	cardanoNode.Name = "cardano-node"
-	cardanoNode.Image = relay.Spec.Image
-	cardanoNode.Ports = []corev1.ContainerPort{
-		{
-			ContainerPort: 31400,
-			Protocol:      corev1.ProtocolTCP,
-			Name:          "cardano",
-		},
-		{
-			ContainerPort: 8080,
-			Protocol:      corev1.ProtocolTCP,
-			Name:          "prometheus",
-		},
-	}
-
-	probe := &corev1.Probe{
-		Handler: corev1.Handler{
-			TCPSocket: &corev1.TCPSocketAction{
-				Port: intstr.FromInt(31400),
-			},
-		},
-		InitialDelaySeconds: 5,
-		PeriodSeconds:       10,
-		FailureThreshold:    180,
-	}
-
-	// Set readiness probe
-	cardanoNode.ReadinessProbe = probe
-
-	// set livenessProbe
-	cardanoNode.LivenessProbe = probe
-
-	cardanoNode.Command = []string{"cardano-node"}
-	cardanoNode.Args = []string{
-		"run",
-		"--config", "/configuration/configuration.yaml",
-		"--database-path", "/data/db",
-		"--host-addr", "0.0.0.0",
-		"--port", "31400",
-		"--socket-path", "/ipc/node.socket",
-		"--topology", "/configuration/topology.json",
-	}
-	cardanoNode.VolumeMounts = []corev1.VolumeMount{
-		{
-			Name:      "node-db",
-			MountPath: "/data",
-		},
-		{
-			Name:      "node-ipc",
-			MountPath: "/ipc",
-		},
-		{
-			Name:      "cardano-config",
-			MountPath: "/configuration",
-		},
-	}
-
-	state.Spec.Template.Spec.Containers = append(state.Spec.Template.Spec.Containers, cardanoNode)
-
-	// add container volumes like node-ipc and cardano-config
-	state.Spec.Template.Spec.Volumes = []corev1.Volume{
-		{
-			Name: "node-ipc",
-			VolumeSource: corev1.VolumeSource{
-				EmptyDir: nil,
-			},
-		},
-		{
-			Name: "cardano-config",
-			VolumeSource: corev1.VolumeSource{
-				Projected: &corev1.ProjectedVolumeSource{
-					Sources: []corev1.VolumeProjection{
-						{
-							ConfigMap: &corev1.ConfigMapProjection{
-								LocalObjectReference: corev1.LocalObjectReference{
-									Name: fmt.Sprintf("%s-config", relay.Name),
-								},
-							},
-						},
-						{
-							ConfigMap: &corev1.ConfigMapProjection{
-								LocalObjectReference: corev1.LocalObjectReference{
-									Name: fmt.Sprintf("%s-topology", relay.Name),
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-	}
-
-	// add volumeClaimTemplate
-	state.Spec.VolumeClaimTemplates = []corev1.PersistentVolumeClaim{
-		{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "node-db",
-			},
-			Spec: relay.Spec.Storage,
-		},
-	}
+	state := generateNodeStatefulset(relay.Name,
+		relay.Namespace,
+		relay.Spec.Image,
+		ls,
+		relay.Spec.Replicas,
+		relay.Spec.ImagePullSecrets,
+		relay.Spec.Storage,
+		false,
+	)
 
 	// Set Relay instance as the owner and controller
 	ctrl.SetControllerReference(relay, state, r.Scheme)
@@ -339,7 +157,11 @@ func (r *RelayReconciler) statefulsetForRelay(relay *cardanov1.Relay) *appsv1.St
 // labelsForRelay returns the labels for selecting the resources
 // belonging to the given memcached CR name.
 func labelsForRelay(name string) map[string]string {
-	return map[string]string{"app": "cardano-node", "relay_cr": name}
+	return map[string]string{
+		"app":      "cardano-node",
+		"relay_cr": name,
+		"instance": "relay",
+	}
 }
 
 // getPodNames returns the pod names of the array of pods passed in

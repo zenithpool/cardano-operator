@@ -55,7 +55,7 @@ spec:
               format: int32
               type: integer
             service:
-              description: RelayServiceSpec ...
+              description: NodeServiceSpec ...
               properties:
                 annotations:
                   additionalProperties:
