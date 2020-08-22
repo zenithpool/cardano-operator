@@ -9,10 +9,7 @@ import (
 	cardanov1 "github.com/zenithpool/cardano-operator/api/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -70,16 +67,12 @@ func generateNodeStatefulset(name string,
 					Sources: []corev1.VolumeProjection{
 						{
 							ConfigMap: &corev1.ConfigMapProjection{
-								LocalObjectReference: corev1.LocalObjectReference{
-									Name: fmt.Sprintf("%s-config", name),
-								},
+								LocalObjectReference: nodeSpec.ConfigurationConfig,
 							},
 						},
 						{
 							ConfigMap: &corev1.ConfigMapProjection{
-								LocalObjectReference: corev1.LocalObjectReference{
-									Name: fmt.Sprintf("%s-topology", name),
-								},
+								LocalObjectReference: nodeSpec.TopologyConfig,
 							},
 						},
 					},
@@ -389,40 +382,6 @@ func ensureActiveStandby(name string, namespace string, labels map[string]string
 			return ctrl.Result{Requeue: true}, fmt.Errorf("Unable to patch svc with designation label: %s", err.Error())
 		}
 	}
-
-	return ctrl.Result{}, nil
-}
-
-func createConfigMap(name string, namespace string, key string, data string, r client.Client, obj v1.Object, scheme *runtime.Scheme) (ctrl.Result, error) {
-
-	ctx := context.Background()
-
-	// Check if configMaps already exists, if not create a new one
-	configMap := &corev1.ConfigMap{}
-	configKey := types.NamespacedName{Name: name, Namespace: namespace}
-	err := r.Get(ctx, configKey, configMap)
-	if err != nil && errors.IsNotFound(err) {
-		// Define a new configMap
-		configMap = &corev1.ConfigMap{
-			ObjectMeta: v1.ObjectMeta{
-				Name:      name,
-				Namespace: namespace,
-			},
-			Data: map[string]string{key: data},
-		}
-		ctrl.SetControllerReference(obj, configMap, scheme)
-
-		err = r.Create(ctx, configMap)
-		if err != nil {
-			return ctrl.Result{}, err
-		}
-		// ConfigMap created successfully - return and requeue
-		return ctrl.Result{Requeue: true}, nil
-	} else if err != nil {
-		return ctrl.Result{}, err
-	}
-
-	// TODO check if data is same, if not then update
 
 	return ctrl.Result{}, nil
 }

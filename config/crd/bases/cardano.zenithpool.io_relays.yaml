@@ -36,8 +36,15 @@ spec:
         spec:
           description: RelaySpec defines the desired state of Relay
           properties:
-            configuration.yaml:
-              type: string
+            configuration:
+              description: LocalObjectReference contains enough information to let
+                you locate the referenced object inside the same namespace.
+              properties:
+                name:
+                  description: 'Name of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                    TODO: Add other useful fields. apiVersion, kind, uid?'
+                  type: string
+              type: object
             image:
               type: string
             imagePullSecrets:
@@ -221,8 +228,15 @@ spec:
                     backing this claim.
                   type: string
               type: object
-            topology.json:
-              type: string
+            topology:
+              description: LocalObjectReference contains enough information to let
+                you locate the referenced object inside the same namespace.
+              properties:
+                name:
+                  description: 'Name of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                    TODO: Add other useful fields. apiVersion, kind, uid?'
+                  type: string
+              type: object
           required:
           - replicas
           - storage

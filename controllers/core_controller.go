@@ -18,7 +18,6 @@ package controllers
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -70,26 +69,6 @@ func (r *CoreReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 		return ctrl.Result{}, err
 	}
 
-	// create configuration.yaml if not found
-	configMapName := fmt.Sprintf("%s-config", core.Name)
-	result, err := createConfigMap(configMapName, core.Namespace, "configuration.yaml", core.Spec.NodeSpec.ConfigurationConfig, r.Client, core, r.Scheme)
-	if err != nil || result.Requeue {
-		if err != nil {
-			log.Error(err, "Failed to create configuration.yaml", "configMap.Namespace", core.Namespace, "ConfigMap.Name", configMapName)
-		}
-		return result, err
-	}
-
-	// create topology.json if not found
-	configMapName = fmt.Sprintf("%s-topology", core.Name)
-	result, err = createConfigMap(configMapName, core.Namespace, "topology.json", core.Spec.NodeSpec.TopologyConfig, r.Client, core, r.Scheme)
-	if err != nil || result.Requeue {
-		if err != nil {
-			log.Error(err, "Failed to create configuration.yaml", "configMap.Namespace", core.Namespace, "ConfigMap.Name", configMapName)
-		}
-		return result, err
-	}
-
 	// Check if the statefulset already exists, if not create a new one
 	found := &appsv1.StatefulSet{}
 	err = r.Get(ctx, types.NamespacedName{Name: core.Name, Namespace: core.Namespace}, found)
@@ -128,7 +107,7 @@ func (r *CoreReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 		return ctrl.Result{}, err
 	}
 
-	result, err = ensureSpec(core.Spec.Replicas, found, core.Spec.Image, r)
+	result, err := ensureSpec(core.Spec.Replicas, found, core.Spec.Image, r)
 	if err != nil || result.Requeue {
 		if err != nil {
 			log.Error(err, "Failed to update StatefulSet", "StatefulSet.Namespace", found.Namespace, "StatefulSet.Name", found.Name)

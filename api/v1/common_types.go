@@ -12,8 +12,8 @@ type NodeSpec struct {
 	Storage             v1.PersistentVolumeClaimSpec `json:"storage"`
 	Service             NodeServiceSpec              `json:"service,omitempty"`
 	Resources           v1.ResourceRequirements      `json:"resources,omitempty"`
-	ConfigurationConfig string                       `json:"configuration.yaml,omitempty"`
-	TopologyConfig      string                       `json:"topology.json,omitempty"`
+	ConfigurationConfig v1.LocalObjectReference      `json:"configuration,omitempty"`
+	TopologyConfig      v1.LocalObjectReference      `json:"topology,omitempty"`
 }
 
 // NodeServiceSpec ...

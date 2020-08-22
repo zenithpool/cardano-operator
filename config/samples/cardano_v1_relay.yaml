@@ -23,6 +23,17 @@ spec:
   service:
     type: ClusterIP
     port: 31400
+  configuration: 
+    name: 'core-config' 
+  topology: 
+    name: 'core-topology'
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name:  'core-topology'
+data:
   topology.json: |
     {
       "Producers": [
@@ -34,6 +45,12 @@ spec:
         }
       ]
     }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name:  'core-config'
+data:
   configuration.yaml: |
     ApplicationName: cardano-sl
     ApplicationVersion: 1
