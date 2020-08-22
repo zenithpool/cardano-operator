@@ -36,6 +36,8 @@ spec:
         spec:
           description: RelaySpec defines the desired state of Relay
           properties:
+            configuration.yaml:
+              type: string
             image:
               type: string
             imagePullSecrets:
@@ -219,6 +221,8 @@ spec:
                     backing this claim.
                   type: string
               type: object
+            topology.json:
+              type: string
           required:
           - replicas
           - storage

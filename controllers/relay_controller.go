@@ -18,6 +18,7 @@ package controllers
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -44,6 +45,7 @@ type RelayReconciler struct {
 // +kubebuilder:rbac:groups=apps,resources=statefulsets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=pods,verbs=get;list;update;patch
 // +kubebuilder:rbac:groups=core,resources=services,verbs=get;list;create;update;patch;delete
+// +kubebuilder:rbac:groups=core,resources=configmaps,verbs=get;list;create;update;patch;delete
 
 func (r *RelayReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 	ctx := context.Background()
@@ -65,6 +67,26 @@ func (r *RelayReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 		// Error reading the object - requeue the request.
 		log.Error(err, "Failed to get Relay")
 		return ctrl.Result{}, err
+	}
+
+	// create configuration.yaml if not found
+	configMapName := fmt.Sprintf("%s-config", relay.Name)
+	result, err := createConfigMap(configMapName, relay.Namespace, "configuration.yaml", relay.Spec.NodeSpec.ConfigurationConfig, r.Client, relay, r.Scheme)
+	if err != nil || result.Requeue {
+		if err != nil {
+			log.Error(err, "Failed to create configuration.yaml", "configMap.Namespace", relay.Namespace, "ConfigMap.Name", configMapName)
+		}
+		return result, err
+	}
+
+	// create topology.json if not found
+	configMapName = fmt.Sprintf("%s-topology", relay.Name)
+	result, err = createConfigMap(configMapName, relay.Namespace, "topology.json", relay.Spec.NodeSpec.TopologyConfig, r.Client, relay, r.Scheme)
+	if err != nil || result.Requeue {
+		if err != nil {
+			log.Error(err, "Failed to create configuration.yaml", "configMap.Namespace", relay.Namespace, "ConfigMap.Name", configMapName)
+		}
+		return result, err
 	}
 
 	// Check if the statefulset already exists, if not create a new one
@@ -105,7 +127,7 @@ func (r *RelayReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 		return ctrl.Result{}, err
 	}
 
-	result, err := ensureSpec(relay.Spec.Replicas, found, relay.Spec.Image, r)
+	result, err = ensureSpec(relay.Spec.Replicas, found, relay.Spec.Image, r)
 	if err != nil || result.Requeue {
 		if err != nil {
 			log.Error(err, "Failed to update StatefulSet", "StatefulSet.Namespace", found.Namespace, "StatefulSet.Name", found.Name)

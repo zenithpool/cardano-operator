@@ -1,7 +1,7 @@
 apiVersion: cardano.zenithpool.io/v1
 kind: Core
 metadata:
-  name: core
+  name: core-sample-2
 spec:
   # Add fields here
   replicas: 1
@@ -25,12 +25,17 @@ spec:
   service:
     type: ClusterIP
     port: 31400
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name:  'core-config'
-data:
+  topology.json: |
+    {
+      "Producers": [
+        {
+          "friendly_name": "IOHK Relays",
+          "addr": "relays-new.cardano-mainnet.iohk.io",
+          "port": 3001,
+          "valency": 2
+        }
+      ]
+    }
   configuration.yaml: |
     ApplicationName: cardano-sl
     ApplicationVersion: 1
@@ -143,20 +148,3 @@ data:
       scName: stdout
       scRotation:
 
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name:  'core-topology'
-data:
-  topology.json: |
-    {
-      "Producers": [
-        {
-          "friendly_name": "IOHK Relays",
-          "addr": "relays-new.cardano-mainnet.iohk.io",
-          "port": 3001,
-          "valency": 2
-        }
-      ]
-    }

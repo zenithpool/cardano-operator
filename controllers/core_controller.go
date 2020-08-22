@@ -18,6 +18,7 @@ package controllers
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -41,6 +42,10 @@ type CoreReconciler struct {
 
 // +kubebuilder:rbac:groups=cardano.zenithpool.io,resources=cores,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=cardano.zenithpool.io,resources=cores/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=apps,resources=statefulsets,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=core,resources=pods,verbs=get;list;update;patch
+// +kubebuilder:rbac:groups=core,resources=services,verbs=get;list;create;update;patch;delete
+// +kubebuilder:rbac:groups=core,resources=configmaps,verbs=get;list;create;update;patch;delete
 
 func (r *CoreReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 	ctx := context.Background()
@@ -62,6 +67,26 @@ func (r *CoreReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 		// Error reading the object - requeue the request.
 		log.Error(err, "Failed to get Core")
 		return ctrl.Result{}, err
+	}
+
+	// create configuration.yaml if not found
+	configMapName := fmt.Sprintf("%s-config", core.Name)
+	result, err := createConfigMap(configMapName, core.Namespace, "configuration.yaml", core.Spec.NodeSpec.ConfigurationConfig, r.Client, core, r.Scheme)
+	if err != nil || result.Requeue {
+		if err != nil {
+			log.Error(err, "Failed to create configuration.yaml", "configMap.Namespace", core.Namespace, "ConfigMap.Name", configMapName)
+		}
+		return result, err
+	}
+
+	// create topology.json if not found
+	configMapName = fmt.Sprintf("%s-topology", core.Name)
+	result, err = createConfigMap(configMapName, core.Namespace, "topology.json", core.Spec.NodeSpec.TopologyConfig, r.Client, core, r.Scheme)
+	if err != nil || result.Requeue {
+		if err != nil {
+			log.Error(err, "Failed to create configuration.yaml", "configMap.Namespace", core.Namespace, "ConfigMap.Name", configMapName)
+		}
+		return result, err
 	}
 
 	// Check if the statefulset already exists, if not create a new one
@@ -102,7 +127,7 @@ func (r *CoreReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 		return ctrl.Result{}, err
 	}
 
-	result, err := ensureSpec(core.Spec.Replicas, found, core.Spec.Image, r)
+	result, err = ensureSpec(core.Spec.Replicas, found, core.Spec.Image, r)
 	if err != nil || result.Requeue {
 		if err != nil {
 			log.Error(err, "Failed to update StatefulSet", "StatefulSet.Namespace", found.Namespace, "StatefulSet.Name", found.Name)
