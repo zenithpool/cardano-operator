@@ -148,11 +148,8 @@ func (r *RelayReconciler) statefulsetForRelay(relay *cardanov1.Relay) *appsv1.St
 
 	state := generateNodeStatefulset(relay.Name,
 		relay.Namespace,
-		relay.Spec.Image,
 		ls,
-		relay.Spec.Replicas,
-		relay.Spec.ImagePullSecrets,
-		relay.Spec.Storage,
+		relay.Spec.NodeSpec,
 		false,
 	)
 

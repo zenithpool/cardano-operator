@@ -24,11 +24,8 @@ const (
 
 func generateNodeStatefulset(name string,
 	namespace string,
-	image string,
 	labels map[string]string,
-	replicas int32,
-	imagePullSecrets []corev1.LocalObjectReference,
-	storage corev1.PersistentVolumeClaimSpec,
+	nodeSpec cardanov1.NodeSpec,
 	coreNode bool) *appsv1.StatefulSet {
 
 	state := &appsv1.StatefulSet{
@@ -44,9 +41,9 @@ func generateNodeStatefulset(name string,
 		MatchLabels: labels,
 	}
 
-	state.Spec.Replicas = &replicas
+	state.Spec.Replicas = &nodeSpec.Replicas
 
-	state.Spec.Template.Spec.ImagePullSecrets = imagePullSecrets
+	state.Spec.Template.Spec.ImagePullSecrets = nodeSpec.ImagePullSecrets
 
 	state.Spec.Template.ObjectMeta.Labels = labels
 	state.Spec.Template.ObjectMeta.Annotations = map[string]string{
@@ -59,7 +56,7 @@ func generateNodeStatefulset(name string,
 	cardanoNode := corev1.Container{}
 
 	cardanoNode.Name = "cardano-node"
-	cardanoNode.Image = image
+	cardanoNode.Image = nodeSpec.Image
 	cardanoNode.Ports = []corev1.ContainerPort{
 		{
 			ContainerPort: 31400,
@@ -72,6 +69,8 @@ func generateNodeStatefulset(name string,
 			Name:          "prometheus",
 		},
 	}
+
+	cardanoNode.Resources = nodeSpec.Resources
 
 	probe := &corev1.Probe{
 		Handler: corev1.Handler{
@@ -201,7 +200,7 @@ func generateNodeStatefulset(name string,
 			ObjectMeta: metav1.ObjectMeta{
 				Name: "node-db",
 			},
-			Spec: storage,
+			Spec: nodeSpec.Storage,
 		},
 	}
 

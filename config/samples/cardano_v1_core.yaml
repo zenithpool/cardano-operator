@@ -8,6 +8,13 @@ spec:
   imagePullSecrets:
     - name: ocirsecret
   image: "fra.ocir.io/axj3k4dkrqku/cardano-node:1.19.0"
+  resources:
+    requests:
+      cpu: 1
+      memory: 2Gi
+    limits:
+      cpu: 1
+      memory: 2Gi
   storage:
     accessModes:
       - "ReadWriteOnce"

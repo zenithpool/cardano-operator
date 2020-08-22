@@ -11,6 +11,7 @@ type NodeSpec struct {
 	Image            string                       `json:"image,omitempty"`
 	Storage          v1.PersistentVolumeClaimSpec `json:"storage"`
 	Service          NodeServiceSpec              `json:"service,omitempty"`
+	Resources        v1.ResourceRequirements      `json:"resources,omitempty"`
 }
 
 // NodeServiceSpec ...

@@ -144,11 +144,8 @@ func (r *CoreReconciler) statefulsetForCore(core *cardanov1.Core) *appsv1.Statef
 
 	state := generateNodeStatefulset(core.Name,
 		core.Namespace,
-		core.Spec.Image,
 		ls,
-		core.Spec.Replicas,
-		core.Spec.ImagePullSecrets,
-		core.Spec.Storage,
+		core.Spec.NodeSpec,
 		true,
 	)
 
