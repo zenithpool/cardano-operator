@@ -5,9 +5,7 @@ metadata:
 spec:
   # Add fields here
   replicas: 1
-  imagePullSecrets:
-    - name: ocirsecret
-  image: "fra.ocir.io/axj3k4dkrqku/cardano-node:1.19.0"
+  image: "inputoutput/cardano-node:1.19.0"
   resources:
     requests:
       cpu: 1

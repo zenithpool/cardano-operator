@@ -55,6 +55,39 @@ func generateNodeStatefulset(name string,
 		"prometheus.io/port":   "8080",
 	}
 
+	// add container volumes like node-ipc and cardano-config
+	state.Spec.Template.Spec.Volumes = []corev1.Volume{
+		{
+			Name: "node-ipc",
+			VolumeSource: corev1.VolumeSource{
+				EmptyDir: nil,
+			},
+		},
+		{
+			Name: "cardano-config",
+			VolumeSource: corev1.VolumeSource{
+				Projected: &corev1.ProjectedVolumeSource{
+					Sources: []corev1.VolumeProjection{
+						{
+							ConfigMap: &corev1.ConfigMapProjection{
+								LocalObjectReference: corev1.LocalObjectReference{
+									Name: fmt.Sprintf("%s-config", name),
+								},
+							},
+						},
+						{
+							ConfigMap: &corev1.ConfigMapProjection{
+								LocalObjectReference: corev1.LocalObjectReference{
+									Name: fmt.Sprintf("%s-topology", name),
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
 	// Create pod container details
 	cardanoNode := corev1.Container{}
 
@@ -92,7 +125,6 @@ func generateNodeStatefulset(name string,
 	// set livenessProbe
 	cardanoNode.LivenessProbe = probe
 
-	cardanoNode.Command = []string{"cardano-node"}
 	cardanoNode.Args = []string{
 		"run",
 		"--config", "/configuration/configuration.yaml",
@@ -129,40 +161,27 @@ func generateNodeStatefulset(name string,
 		cardanoNode.VolumeMounts = append(cardanoNode.VolumeMounts, corev1.VolumeMount{Name: "nodeop-secrets", MountPath: "/nodeop"})
 	}
 
-	state.Spec.Template.Spec.Containers = append(state.Spec.Template.Spec.Containers, cardanoNode)
-
-	// add container volumes like node-ipc and cardano-config
-	state.Spec.Template.Spec.Volumes = []corev1.Volume{
-		{
-			Name: "node-ipc",
-			VolumeSource: corev1.VolumeSource{
-				EmptyDir: nil,
-			},
-		},
-		{
-			Name: "cardano-config",
-			VolumeSource: corev1.VolumeSource{
-				Projected: &corev1.ProjectedVolumeSource{
-					Sources: []corev1.VolumeProjection{
-						{
-							ConfigMap: &corev1.ConfigMapProjection{
-								LocalObjectReference: corev1.LocalObjectReference{
-									Name: fmt.Sprintf("%s-config", name),
-								},
-							},
-						},
-						{
-							ConfigMap: &corev1.ConfigMapProjection{
-								LocalObjectReference: corev1.LocalObjectReference{
-									Name: fmt.Sprintf("%s-topology", name),
-								},
-							},
-						},
+	// the inputoutput images need to have their genesis files moved to a generalized filepath
+	// create InitContainers to move genesis files to /genesis
+	if strings.HasPrefix(nodeSpec.Image, "inputoutput/cardano") {
+		cardanoNode.VolumeMounts = append(cardanoNode.VolumeMounts, corev1.VolumeMount{Name: "genesis", MountPath: "/genesis"})
+		state.Spec.Template.Spec.InitContainers = []corev1.Container{
+			{
+				Name:  "cardano-node-init",
+				Image: nodeSpec.Image,
+				VolumeMounts: []corev1.VolumeMount{
+					{
+						Name:      "genesis",
+						MountPath: "/genesis",
 					},
 				},
+				Command: []string{"sh", "-c", "cp /nix/store/*-mainnet-byron-genesis.json /genesis/byron-genesis.json && cp /nix/store/*-mainnet-shelley-genesis.json /genesis/shelley-genesis.json"},
 			},
-		},
+		}
+		state.Spec.Template.Spec.Volumes = append(state.Spec.Template.Spec.Volumes, corev1.Volume{Name: "genesis", VolumeSource: corev1.VolumeSource{EmptyDir: nil}})
 	}
+
+	state.Spec.Template.Spec.Containers = append(state.Spec.Template.Spec.Containers, cardanoNode)
 
 	if coreNode {
 		state.Spec.Template.Spec.Volumes = append(state.Spec.Template.Spec.Volumes, corev1.Volume{
