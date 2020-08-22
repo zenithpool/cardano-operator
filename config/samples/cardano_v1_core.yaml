@@ -5,9 +5,7 @@ metadata:
 spec:
   # Add fields here
   replicas: 1
-  imagePullSecrets:
-    - name: ocirsecret
-  image: "fra.ocir.io/axj3k4dkrqku/cardano-node:1.19.0"
+  image: "inputoutput/cardano-node:1.19.0"
   resources:
     requests:
       cpu: 1
@@ -25,6 +23,17 @@ spec:
   service:
     type: ClusterIP
     port: 31400
+  configuration: 
+    name: 'core-config' 
+  topology: 
+    name: 'core-topology'
+    
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name:  'core-topology'
+data:
   topology.json: |
     {
       "Producers": [
@@ -36,6 +45,12 @@ spec:
         }
       ]
     }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name:  'core-config'
+data:
   configuration.yaml: |
     ApplicationName: cardano-sl
     ApplicationVersion: 1

@@ -22,13 +22,16 @@ import (
 
 	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	policyv1 "k8s.io/api/policy/v1beta1"
 
 	cardanov1 "github.com/zenithpool/cardano-operator/api/v1"
 )
@@ -46,6 +49,7 @@ type CoreReconciler struct {
 // +kubebuilder:rbac:groups=core,resources=pods,verbs=get;list;update;patch
 // +kubebuilder:rbac:groups=core,resources=services,verbs=get;list;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=configmaps,verbs=get;list;create;update;patch;delete
+// +kubebuilder:rbac:groups=policy,resources=poddisruptionbudgets,verbs=get;list;create;update;patch;delete
 
 func (r *CoreReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 	ctx := context.Background()
@@ -86,6 +90,35 @@ func (r *CoreReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 	} else if err != nil {
 		log.Error(err, "Failed to get StatefulSet")
 		return ctrl.Result{}, err
+	}
+
+	// Check if the PodDisruptionBudget already exists, if not create a new one
+	foundPDB := &policyv1.PodDisruptionBudget{}
+	err = r.Get(ctx, types.NamespacedName{Name: core.Name, Namespace: core.Namespace}, foundPDB)
+	if err != nil && errors.IsNotFound(err) {
+		// Define a new PodDisruptionPolicy
+		pdb := r.pdbForCore(core)
+		if pdb != nil {
+			log.Info("Creating a new PodDisruptionPolicy", "PodDisruptionPolicy.Namespace", pdb.Namespace, "PodDisruptionPolicy.Name", pdb.Name)
+			err = r.Create(ctx, pdb)
+			if err != nil {
+				log.Error(err, "Failed to create new PodDisruptionPolicy", "PodDisruptionPolicy.Namespace", pdb.Namespace, "PodDisruptionPolicy.Name", pdb.Name)
+				return ctrl.Result{}, err
+			}
+
+			return ctrl.Result{Requeue: true}, nil
+		}
+	} else if err != nil {
+		log.Error(err, "Failed to get PodDisruptionPolicy")
+		return ctrl.Result{}, err
+	}
+
+	// Check if PodDisruptionBudget should be removed
+	if minav, err := intstr.GetValueFromIntOrPercent(foundPDB.Spec.MinAvailable, 1, false); err == nil {
+		if int32(minav) >= core.Spec.Replicas {
+			// Need to delete PDB
+			r.Delete(ctx, foundPDB)
+		}
 	}
 
 	// Check if the service already exists, if not create a new one
@@ -204,4 +237,32 @@ func (r *CoreReconciler) ActiveStandbyWatch() {
 
 	}
 
+}
+
+func (r *CoreReconciler) pdbForCore(core *cardanov1.Core) *policyv1.PodDisruptionBudget {
+	ls := labelsForCore(core.Name)
+
+	if core.Spec.Replicas <= 1 {
+		return nil
+
+	}
+
+	minAvailable := intstr.FromInt(1)
+
+	pdb := &policyv1.PodDisruptionBudget{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      core.Name,
+			Namespace: core.Namespace,
+		},
+		Spec: policyv1.PodDisruptionBudgetSpec{
+			MinAvailable: &minAvailable,
+			Selector: &metav1.LabelSelector{
+				MatchLabels: ls,
+			},
+		},
+	}
+
+	// Set Relay instance as the owner and controller
+	ctrl.SetControllerReference(core, pdb, r.Scheme)
+	return pdb
 }
