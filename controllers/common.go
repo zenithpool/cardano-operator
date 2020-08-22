@@ -154,27 +154,11 @@ func generateNodeStatefulset(name string,
 		cardanoNode.VolumeMounts = append(cardanoNode.VolumeMounts, corev1.VolumeMount{Name: "nodeop-secrets", MountPath: "/nodeop"})
 	}
 
+	state.Spec.Template.Spec.Containers = append(state.Spec.Template.Spec.Containers, cardanoNode)
+
 	// the inputoutput images need to have their genesis files moved to a generalized filepath
 	// create InitContainers to move genesis files to /genesis
-	if strings.HasPrefix(nodeSpec.Image, "inputoutput/cardano") {
-		cardanoNode.VolumeMounts = append(cardanoNode.VolumeMounts, corev1.VolumeMount{Name: "genesis", MountPath: "/genesis"})
-		state.Spec.Template.Spec.InitContainers = []corev1.Container{
-			{
-				Name:  "cardano-node-init",
-				Image: nodeSpec.Image,
-				VolumeMounts: []corev1.VolumeMount{
-					{
-						Name:      "genesis",
-						MountPath: "/genesis",
-					},
-				},
-				Command: []string{"sh", "-c", "cp /nix/store/*-mainnet-byron-genesis.json /genesis/byron-genesis.json && cp /nix/store/*-mainnet-shelley-genesis.json /genesis/shelley-genesis.json"},
-			},
-		}
-		state.Spec.Template.Spec.Volumes = append(state.Spec.Template.Spec.Volumes, corev1.Volume{Name: "genesis", VolumeSource: corev1.VolumeSource{EmptyDir: nil}})
-	}
-
-	state.Spec.Template.Spec.Containers = append(state.Spec.Template.Spec.Containers, cardanoNode)
+	addOrRemoveInputOutputContainer(nodeSpec.Image, state)
 
 	if coreNode {
 		state.Spec.Template.Spec.Volumes = append(state.Spec.Template.Spec.Volumes, corev1.Volume{
@@ -255,7 +239,7 @@ func generateNodeService(name string,
 	return svc
 }
 
-func ensureSpec(replicas int32, found *appsv1.StatefulSet, image string, r client.Client) (ctrl.Result, error) {
+func ensureSpec(replicas int32, found *appsv1.StatefulSet, nodeSpec cardanov1.NodeSpec, r client.Client) (ctrl.Result, error) {
 
 	ctx := context.Background()
 
@@ -272,8 +256,12 @@ func ensureSpec(replicas int32, found *appsv1.StatefulSet, image string, r clien
 
 	// Ensure the statefulset image is the same as the spec
 	for key, container := range found.Spec.Template.Spec.Containers {
-		if strings.EqualFold(container.Name, "cardano-node") && container.Image != image {
-			found.Spec.Template.Spec.Containers[key].Image = image
+		if strings.EqualFold(container.Name, "cardano-node") && container.Image != nodeSpec.Image {
+			// TODO if the container image switches from inputoutput/cardano-node to another image
+			// then it should update the inputoutput special configurations like Initcontainers and volumes
+			found.Spec.Template.Spec.Containers[key].Image = nodeSpec.Image
+			found.Spec.Template.Spec.ImagePullSecrets = nodeSpec.ImagePullSecrets
+			addOrRemoveInputOutputContainer(nodeSpec.Image, found)
 			err := r.Update(ctx, found)
 			if err != nil {
 
@@ -384,4 +372,109 @@ func ensureActiveStandby(name string, namespace string, labels map[string]string
 	}
 
 	return ctrl.Result{}, nil
+}
+
+func addOrRemoveInputOutputContainer(image string, state *appsv1.StatefulSet) {
+	if strings.HasPrefix(image, "inputoutput/cardano") {
+
+		// add genesis volume mount if the cardano-node container does not already
+		contains := false
+		for key, container := range state.Spec.Template.Spec.Containers {
+
+			// find cardano-node container
+			if strings.EqualFold(container.Name, "cardano-node") {
+
+				// find genesis volumeMount
+				for _, volumeMounts := range container.VolumeMounts {
+					if strings.EqualFold(volumeMounts.Name, "genesis") {
+						contains = true
+						break
+					}
+				}
+
+				// add to it if it does not exist
+				if !contains {
+					state.Spec.Template.Spec.Containers[key].VolumeMounts = append(state.Spec.Template.Spec.Containers[key].VolumeMounts, corev1.VolumeMount{Name: "genesis", MountPath: "/genesis"})
+				}
+				break
+			}
+		}
+
+		// add initContainer if it does not already
+		contains = false
+		initContainer := corev1.Container{
+			Name:  "cardano-node-init",
+			Image: image,
+			VolumeMounts: []corev1.VolumeMount{
+				{
+					Name:      "genesis",
+					MountPath: "/genesis",
+				},
+			},
+			Command: []string{"sh", "-c", "cp /nix/store/*-mainnet-byron-genesis.json /genesis/byron-genesis.json && cp /nix/store/*-mainnet-shelley-genesis.json /genesis/shelley-genesis.json"},
+		}
+		for key, container := range state.Spec.Template.Spec.InitContainers {
+			if strings.EqualFold(container.Name, "cardano-node-init") {
+				contains = true
+
+				// verify that image matches image of container
+				state.Spec.Template.Spec.InitContainers[key].Image = image
+				break
+			}
+		}
+
+		if !contains {
+			state.Spec.Template.Spec.InitContainers = append(state.Spec.Template.Spec.InitContainers, initContainer)
+		}
+
+		// Add genesis volume if it does not already
+		contains = false
+		for _, volume := range state.Spec.Template.Spec.Volumes {
+			if strings.EqualFold(volume.Name, "genesis") {
+				contains = true
+				break
+			}
+		}
+
+		if !contains {
+			state.Spec.Template.Spec.Volumes = append(state.Spec.Template.Spec.Volumes, corev1.Volume{Name: "genesis", VolumeSource: corev1.VolumeSource{EmptyDir: nil}})
+		}
+		return
+	}
+
+	// else remove the inputoutput configurations if any
+
+	// remove container's genesis volume
+	for key, container := range state.Spec.Template.Spec.Containers {
+
+		// find cardano-node container
+		if strings.EqualFold(container.Name, "cardano-node") {
+
+			// find genesis volumeMount
+			for volumeMountKey, volumeMounts := range container.VolumeMounts {
+				if strings.EqualFold(volumeMounts.Name, "genesis") {
+					state.Spec.Template.Spec.Containers[key].VolumeMounts = append(state.Spec.Template.Spec.Containers[key].VolumeMounts[:volumeMountKey], state.Spec.Template.Spec.Containers[key].VolumeMounts[volumeMountKey+1:]...)
+					break
+				}
+			}
+			break
+		}
+	}
+
+	// remove inputoutput init container
+	for key, container := range state.Spec.Template.Spec.InitContainers {
+		if strings.EqualFold(container.Name, "cardano-node-init") {
+			state.Spec.Template.Spec.InitContainers = append(state.Spec.Template.Spec.InitContainers[:key], state.Spec.Template.Spec.InitContainers[key+1:]...)
+			break
+		}
+	}
+
+	// remove inputoutput genesis volume
+	for key, volume := range state.Spec.Template.Spec.Volumes {
+		if strings.EqualFold(volume.Name, "genesis") {
+			state.Spec.Template.Spec.Volumes = append(state.Spec.Template.Spec.Volumes[:key], state.Spec.Template.Spec.Volumes[key+1:]...)
+			break
+		}
+	}
+	return
 }

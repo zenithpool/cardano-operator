@@ -107,7 +107,7 @@ func (r *CoreReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 		return ctrl.Result{}, err
 	}
 
-	result, err := ensureSpec(core.Spec.Replicas, found, core.Spec.Image, r)
+	result, err := ensureSpec(core.Spec.Replicas, found, core.Spec.NodeSpec, r)
 	if err != nil || result.Requeue {
 		if err != nil {
 			log.Error(err, "Failed to update StatefulSet", "StatefulSet.Namespace", found.Namespace, "StatefulSet.Name", found.Name)
