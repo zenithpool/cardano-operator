@@ -25,12 +25,17 @@ spec:
   service:
     type: ClusterIP
     port: 31400
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name:  'relay-config'
-data:
+  topology.json: |
+    {
+      "Producers": [
+        {
+          "friendly_name": "Sample Core",
+          "addr": "core.default.svc.cluster.local",
+          "port": 31400,
+          "valency": 2
+        }
+      ]
+    }
   configuration.yaml: |
     ApplicationName: cardano-sl
     ApplicationVersion: 1
@@ -142,24 +147,4 @@ data:
       scKind: StdoutSK
       scName: stdout
       scRotation:
-
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name:  'relay-topology'
-data:
-  topology.json: |
-    {
-      "Producers": [
-        {
-          "friendly_name": "IOHK Relays",
-          "addr": "core.default.svc.cluster.local",
-          "port": 31400,
-          "valency": 2
-        }
-      ]
-    }
-
-
 

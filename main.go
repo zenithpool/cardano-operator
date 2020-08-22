@@ -75,22 +75,17 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "Relay")
 		os.Exit(1)
 	}
-	if err = (&controllers.CoreReconciler{
+	coreReconciler := &controllers.CoreReconciler{
 		Client: mgr.GetClient(),
 		Log:    ctrl.Log.WithName("controllers").WithName("Core"),
 		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
+	}
+	if err = coreReconciler.SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Core")
 		os.Exit(1)
 	}
 
-	failOverReconciler := &controllers.FailOverReconciler{
-		Client: mgr.GetClient(),
-		Log:    ctrl.Log.WithName("controllers").WithName("FailOver"),
-		Scheme: mgr.GetScheme(),
-	}
-
-	go failOverReconciler.Reconcile()
+	go coreReconciler.ActiveStandbyWatch()
 	// +kubebuilder:scaffold:builder
 
 	setupLog.Info("starting manager")

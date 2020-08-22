@@ -19,6 +19,7 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -193,4 +194,35 @@ func (r *CoreReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&cardanov1.Core{}).
 		Complete(r)
+}
+
+func (r *CoreReconciler) ActiveStandbyWatch() {
+	ctx := context.Background()
+	log := r.Log
+
+	// your logic here
+
+	for {
+		time.Sleep(1 * time.Second)
+
+		// get list of core
+		coreList := &cardanov1.CoreList{}
+		err := r.List(ctx, coreList)
+		if err != nil {
+			log.Error(err, "Unable to get core list")
+			continue
+		}
+
+		for _, core := range coreList.Items {
+			result, err := ensureActiveStandby(core.Name, core.Namespace, labelsForCore(core.Name), r.Client)
+			if err != nil || result.Requeue {
+				if err != nil {
+					log.Error(err, "Failed to ensure active/standby", "Core.Namespace", core.Namespace, "Core.Name", core.Name)
+				}
+				continue
+			}
+		}
+
+	}
+
 }

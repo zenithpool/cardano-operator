@@ -41,26 +41,6 @@ rules:
 - apiGroups:
   - cardano.zenithpool.io
   resources:
-  - failovers
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - cardano.zenithpool.io
-  resources:
-  - failovers/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - cardano.zenithpool.io
-  resources:
   - relays
   verbs:
   - create
